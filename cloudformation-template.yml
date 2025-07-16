@@ -32,7 +32,7 @@ Parameters:
     ConstraintDescription: Must be between 300 and 604800 seconds
   DomainName:
     Type: String
-    Default: resume.ching.dev
+    Default: chingyung.uk
     Description: Custom domain name for the public authentication page
     ConstraintDescription: Must match the Route 53 hosted zone domain
 
@@ -268,7 +268,8 @@ Resources:
           MaxTTL: 31536000
         PriceClass: PriceClass_100
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: arn:aws:acm:us-east-1:105051201569:certificate/11fa35ca-5f01-43ad-9558-7f3ae38d603b
+          SslSupportMethod: sni-only
         Aliases:
           - !Ref DomainName
 
