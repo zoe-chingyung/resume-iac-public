@@ -1,30 +1,93 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Resume Hosting with Auth - by Ching
+Description: Resume Hosting with Authentication - by Ching
 
 Parameters:
-  BucketNameResume:
+  PrivateBucketName:
     Type: String
     Default: ching-resume-html
-  BucketNameAuthPage:
+    Description: Unique name for the private S3 bucket hosting resume content
+    ConstraintDescription: Must be a globally unique S3 bucket name
+  PublicBucketName:
     Type: String
     Default: ching-resume-auth-page
+    Description: Unique name for the public S3 bucket hosting the authentication form
+    ConstraintDescription: Must be a globally unique S3 bucket name
+  AWSRegion:
+    Type: String
+    Default: eu-west-2
+    Description: AWS region for deploying resources
+    AllowedValues:
+      - eu-west-2
+      - us-east-1
+      - us-west-2
+      - eu-west-1
+      - ap-southeast-1
+    ConstraintDescription: Must be a valid AWS region
+  Password:
+    Type: String
+    NoEcho: true
+    Description: Password for validating user access, stored in SSM Parameter Store
+    MinLength: 12
+    ConstraintDescription: Password must be at least 12 characters
+  PreSignedURLExpiration:
+    Type: Number
+    Default: 3600
+    Description: Duration (in seconds) for pre-signed URL validity
+    MinValue: 300
+    MaxValue: 604800
+    ConstraintDescription: Must be between 300 and 604800 seconds
+  DomainName:
+    Type: String
+    Default: resume.ching.dev
+    Description: Custom domain name for the public authentication page
+    ConstraintDescription: Must match the Route 53 hosted zone domain
 
 Resources:
+  # SSM Parameter Store for Password
+  PasswordParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: /resume/auth/password
+      Type: SecureString
+      Value: !Ref Password
+      Description: Secure password for resume access authentication
 
+  # Private S3 Bucket for Resume Content
   ResumeBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref BucketNameResume
+      BucketName: !Ref PrivateBucketName
       AccessControl: Private
+      Tags:
+        - Key: Project
+          Value: ResumeWebsite
 
+  # Public S3 Bucket for Authentication Form
   AuthPageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref BucketNameAuthPage
+      BucketName: !Ref PublicBucketName
       WebsiteConfiguration:
         IndexDocument: index.html
+        ErrorDocument: error.html
       AccessControl: PublicRead
+      Tags:
+        - Key: Project
+          Value: ResumeWebsite
+  AuthPageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuthPageBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${PublicBucketName}/*"
 
+  # IAM Role for Lambda
   ResumeAuthLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -34,10 +97,11 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
+ Juno
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: LambdaS3Access
+        - PolicyName: LambdaAccessPolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -45,16 +109,21 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:ListBucket
-                Resource: 
-                  - !Sub arn:aws:s3:::${BucketNameResume}
-                  - !Sub arn:aws:s3:::${BucketNameResume}/*
+                Resource:
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}"
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub "arn:aws:ssm:${AWSRegion}:${AWS::AccountId}:parameter/resume/auth/password"
 
+  # Lambda Function for Authentication
   ResumeAuthLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -62,40 +131,79 @@ Resources:
       Runtime: python3.11
       Handler: index.handler
       Role: !GetAtt ResumeAuthLambdaRole.Arn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref PrivateBucketName
+          PARAMETER_NAME: /resume/auth/password
+          EXPIRATION: !Ref PreSignedURLExpiration
       Code:
         ZipFile: |
           import json
           import boto3
           import os
-          import datetime
 
           def handler(event, context):
-              password = json.loads(event['body'])['password']
-              if password != "YOUR_SECRET":
+              ssm = boto3.client('ssm')
+              password = ssm.get_parameter(Name=os.environ['PARAMETER_NAME'], WithDecryption=True)['Parameter']['Value']
+              
+              try:
+                  body = json.loads(event.get('body', '{}'))
+                  input_password = body.get('password', '')
+              except json.JSONDecodeError:
+                  return {
+                      "statusCode": 400,
+                      "body": json.dumps({"message": "Invalid request body"}),
+                      "headers": {"Content-Type": "application/json"}
+                  }
+
+              if input_password != password:
                   return {
                       "statusCode": 401,
-                      "body": json.dumps({"message": "Unauthorized"})
+                      "body": json.dumps({"message": "Unauthorized"}),
+                      "headers": {"Content-Type": "application/json"}
                   }
 
               s3 = boto3.client('s3')
               url = s3.generate_presigned_url(
                   'get_object',
-                  Params={'Bucket': 'ching-resume-html', 'Key': 'index.html'},
-                  ExpiresIn=600
+                  Params={'Bucket': os.environ['BUCKET_NAME'], 'Key': 'index.html'},
+                  ExpiresIn=int(os.environ['EXPIRATION'])
               )
               return {
                   "statusCode": 200,
                   "body": json.dumps({"url": url}),
-                  "headers": {
-                      "Content-Type": "application/json"
-                  }
+                  "headers": {"Content-Type": "application/json"}
               }
 
+  # API Gateway for Authentication
   ResumeAuthAPI:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: ching-resume-auth-api
-      Description: API for resume access auth
+      Description: API for resume access authentication
+
+  ResumeAuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      ParentId: !GetAtt ResumeAuthAPI.RootResourceId
+      PathPart: auth
+
+  ResumeAuthMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      ResourceId: !Ref ResumeAuthResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWSRegion}:lambda:path/2015-03-31/functions/${ResumeAuthLambda.Arn}/invocations"
+        IntegrationResponses:
+          - StatusCode: 200
+          - StatusCode: 400
+          - StatusCode: 401
 
   LambdaPermission:
     Type: AWS::Lambda::Permission
@@ -103,3 +211,104 @@ Resources:
       FunctionName: !Ref ResumeAuthLambda
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWSRegion}:${AWS::AccountId}:${ResumeAuthAPI}/*/POST/auth"
+
+  APIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ResumeAuthMethod
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      StageName: prod
+
+  # IAM Role for GitHub Actions
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ching-resume-github-actions-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/github-actions-s3-deploy"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: GitHubActionsS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}"
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
+                  - !Sub "arn:aws:s3:::${PublicBucketName}"
+                  - !Sub "arn:aws:s3:::${PublicBucketName}/*"
+
+  # CloudFront Distribution for Public Bucket
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Sub "${PublicBucketName}.s3-website-${AWSRegion}.amazonaws.com"
+            Id: S3Origin
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        DefaultRootObject: index.html
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /error.html
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        Aliases:
+          - !Ref DomainName
+
+  # Route 53 Record for Custom Domain
+  Route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: ching.dev.
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront hosted zone ID
+
+Outputs:
+  PrivateBucketName:
+    Description: Name of the private S3 bucket
+    Value: !Ref PrivateBucketName
+  PublicBucketWebsiteURL:
+    Description: Website URL for the public authentication page
+    Value: !Sub "http://${PublicBucketName}.s3-website-${AWSRegion}.amazonaws.com"
+  APIEndpoint:
+    Description: API Gateway endpoint for authentication
+    Value: !Sub "https://${ResumeAuthAPI}.execute-api.${AWSRegion}.amazonaws.com/prod/auth"
+  CloudFrontURL:
+    Description: CloudFront URL for the authentication page
+    Value: !Sub "https://${DomainName}"

@@ -70,7 +70,7 @@ To deploy the CloudFormation stack, provide the following parameters:
 - AWS CLI (optional) for local testing and deployment.
 
 ## Related Repository
-- **[resume-site-private](https://github.com/your-username/resume-site-private)**: Private repository containing the resume HTML/CSS files and the authentication form, deployed to the respective S3 buckets.
+- **[resume-site-private](https://github.com/zoe-chingyung/resume-site-private)**: Private repository containing the resume HTML/CSS files and the authentication form, deployed to the respective S3 buckets.
 
 ## License
 This repository is public and licensed under the MIT License. Feel free to use the CloudFormation template as a reference for similar secure static website projects.
