@@ -43,18 +43,6 @@ Parameters:
     ConstraintDescription: Must match the Route 53 hosted zone domain
 
 Resources:
-  # SSM Parameter Store for Password
-  PasswordParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: "/resume/auth/password"
-      Type: String
-      Value: !Ref Password
-      Description: Secure password for resume access authentication
-      Tier: Standard
-      DataType: Text
-      KmsKeyId: "alias/aws/ssm"
-
   # Private S3 Bucket for Resume Content
   ResumeBucket:
     Type: AWS::S3::Bucket
