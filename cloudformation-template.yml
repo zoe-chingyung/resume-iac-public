@@ -48,9 +48,12 @@ Resources:
     Type: "AWS::SSM::Parameter"
     Properties:
       Name: "/resume/auth/password"
-      Type: "SecureString"
+      Type: String
       Value: !Ref Password
       Description: Secure password for resume access authentication
+      Tier: Standard
+      DataType: Text
+      KmsKeyId: "alias/aws/ssm"
 
   # Private S3 Bucket for Resume Content
   ResumeBucket:
