@@ -1,0 +1,26 @@
+# Temporary and build files
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Sensitive files
+.env
+*.pem
+*.key
+*.cert
+*.secret
+aws/credentials
+aws/config
+
+# CloudFormation stack outputs or temporary files
+*.stack
+*.output
+*.log
