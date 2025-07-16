@@ -214,7 +214,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/github-actions-s3-deploy"
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/github-cf-deploy"
             Action: sts:AssumeRole
       Policies:
         - PolicyName: GitHubActionsS3Access
