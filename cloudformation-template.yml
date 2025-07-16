@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Resume Hosting with Authentication - by Ching Yung (2025)
+Description: Resume Hosting with Authentication - by Ching Yung
 
 Parameters:
   PrivateBucketName:
