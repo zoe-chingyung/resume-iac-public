@@ -23,12 +23,6 @@ Parameters:
       - eu-west-1
       - ap-southeast-1
     ConstraintDescription: Must be a valid AWS region
-  Password:
-    Type: String
-    NoEcho: true
-    Description: Password for validating user access, stored in SSM Parameter Store
-    MinLength: 12
-    ConstraintDescription: Password must be at least 12 characters
   PreSignedURLExpiration:
     Type: Number
     Default: 3600
