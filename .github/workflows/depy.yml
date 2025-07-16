@@ -25,5 +25,5 @@ jobs:
             --template-file cloudformation-template.yml \
             --stack-name resume-stack \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides Password=${{ secrets.PASSWORD }}
+            --parameter-overrides PrivateBucketName=ching-resume-html PublicBucketName=ching-resume-auth-page PreSignedURLExpiration=3600 DomainName=resume.ching.dev
 

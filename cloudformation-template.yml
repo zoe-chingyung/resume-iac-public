@@ -23,12 +23,6 @@ Parameters:
       - eu-west-1
       - ap-southeast-1
     ConstraintDescription: Must be a valid AWS region
-  Password:
-    Type: String
-    NoEcho: true
-    Description: Password for validating user access, stored in SSM Parameter Store
-    MinLength: 12
-    ConstraintDescription: Password must be at least 12 characters
   PreSignedURLExpiration:
     Type: Number
     Default: 3600
@@ -38,20 +32,11 @@ Parameters:
     ConstraintDescription: Must be between 300 and 604800 seconds
   DomainName:
     Type: String
-    Default: resume.ching.dev
+    Default: chingyung.uk
     Description: Custom domain name for the public authentication page
     ConstraintDescription: Must match the Route 53 hosted zone domain
 
 Resources:
-  # SSM Parameter Store for Password
-  PasswordParameter:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Name: "/resume/auth/password"
-      Type: "SecureString"
-      Value: !Ref Password
-      Description: Secure password for resume access authentication
-
   # Private S3 Bucket for Resume Content
   ResumeBucket:
     Type: AWS::S3::Bucket
@@ -283,7 +268,8 @@ Resources:
           MaxTTL: 31536000
         PriceClass: PriceClass_100
         ViewerCertificate:
-          CloudFrontDefaultCertificate: true
+          AcmCertificateArn: arn:aws:acm:us-east-1:105051201569:certificate/11fa35ca-5f01-43ad-9558-7f3ae38d603b
+          SslSupportMethod: sni-only
         Aliases:
           - !Ref DomainName
 
