@@ -244,7 +244,7 @@ Resources:
     Properties:
       DistributionConfig:
         Origins:
-          - DomainName: !Sub "${PublicBucketName}.s3-website-${AWSRegion}.amazonaws.com"
+          - DomainName: !Sub "${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
             Id: S3Origin
             CustomOriginConfig:
               HTTPPort: 80
@@ -296,7 +296,7 @@ Outputs:
     Value: !Ref PrivateBucketName
   PublicBucketWebsiteURL:
     Description: Website URL for the public authentication page
-    Value: !Sub "http://${PublicBucketName}.s3-website-${AWSRegion}.amazonaws.com"
+    Value: !Sub "http://${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
   APIEndpoint:
     Description: API Gateway endpoint for authentication
     Value: !Sub "https://${ResumeAuthAPI}.execute-api.${AWSRegion}.amazonaws.com/prod/auth"
