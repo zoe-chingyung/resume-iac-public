@@ -25,5 +25,5 @@ jobs:
             --template-file cloudformation-template.yml \
             --stack-name resume-stack \
             --capabilities CAPABILITY_IAM
-            --parameter-overrides Password=${{ secrets.RESUME_PASSWORD }}
+            --parameter-overrides Password=${{ secrets.PASSWORD }}
 
