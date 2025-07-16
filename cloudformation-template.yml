@@ -1,43 +1,105 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template to create an S3 bucket for hosting a static resume website
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Resume Hosting with Auth - by Ching
 
 Parameters:
-  BucketName:
+  BucketNameResume:
     Type: String
-    Description: Unique name for the S3 bucket
-    Default: resume-site-2025
-    ConstraintDescription: Must be a unique S3 bucket name
+    Default: ching-resume-html
+  BucketNameAuthPage:
+    Type: String
+    Default: ching-resume-auth-page
 
 Resources:
-  S3Bucket:
+
+  ResumeBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref BucketName
+      BucketName: !Ref BucketNameResume
       AccessControl: Private
+
+  AuthPageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketNameAuthPage
       WebsiteConfiguration:
         IndexDocument: index.html
-        ErrorDocument: error.html
-      Tags:
-        - Key: Project
-          Value: ResumeWebsite
+      AccessControl: PublicRead
 
-  S3BucketPolicy:
-    Type: AWS::S3::BucketPolicy
+  ResumeAuthLambdaRole:
+    Type: AWS::IAM::Role
     Properties:
-      Bucket: !Ref S3Bucket
-      PolicyDocument:
-        Version: '2012-10-17'
+      RoleName: ching-resume-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
         Statement:
-          - Sid: PublicReadForGetBucketObjects
-            Effect: Allow
-            Principal: '*'
-            Action: 's3:GetObject'
-            Resource: !Sub 'arn:aws:s3:::${BucketName}/*'
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: 
+                  - !Sub arn:aws:s3:::${BucketNameResume}
+                  - !Sub arn:aws:s3:::${BucketNameResume}/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
 
-Outputs:
-  WebsiteURL:
-    Description: URL for the S3 static website
-    Value: !GetAtt S3Bucket.WebsiteURL
-  BucketName:
-    Description: Name of the S3 bucket
-    Value: !Ref BucketName
+  ResumeAuthLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ching-resume-auth-lambda
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt ResumeAuthLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import datetime
+
+          def handler(event, context):
+              password = json.loads(event['body'])['password']
+              if password != "YOUR_SECRET":
+                  return {
+                      "statusCode": 401,
+                      "body": json.dumps({"message": "Unauthorized"})
+                  }
+
+              s3 = boto3.client('s3')
+              url = s3.generate_presigned_url(
+                  'get_object',
+                  Params={'Bucket': 'ching-resume-html', 'Key': 'index.html'},
+                  ExpiresIn=600
+              )
+              return {
+                  "statusCode": 200,
+                  "body": json.dumps({"url": url}),
+                  "headers": {
+                      "Content-Type": "application/json"
+                  }
+              }
+
+  ResumeAuthAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ching-resume-auth-api
+      Description: API for resume access auth
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ResumeAuthLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
