@@ -45,10 +45,10 @@ Parameters:
 Resources:
   # SSM Parameter Store for Password
   PasswordParameter:
-    Type: AWS::SSM::Parameter
+    Type: "AWS::SSM::Parameter"
     Properties:
-      Name: /resume/auth/password
-      Type: SecureString
+      Name: "/resume/auth/password"
+      Type: "SecureString"
       Value: !Ref Password
       Description: Secure password for resume access authentication
 
