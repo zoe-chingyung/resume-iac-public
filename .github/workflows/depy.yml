@@ -24,6 +24,6 @@ jobs:
           aws cloudformation deploy \
             --template-file cloudformation-template.yml \
             --stack-name resume-stack \
-            --capabilities CAPABILITY_IAM  \
+            --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides Password=${{ secrets.PASSWORD }}
 
