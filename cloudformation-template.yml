@@ -97,7 +97,6 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
- Juno
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
