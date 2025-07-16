@@ -52,10 +52,17 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref PublicBucketName
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: false
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: false
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: error.html
-      AccessControl: PublicRead
       Tags:
         - Key: Project
           Value: ResumeWebsite
@@ -66,11 +73,10 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Sid: PublicReadForGetBucketObjects
-            Effect: Allow
+          - Effect: Allow
             Principal: "*"
             Action: "s3:GetObject"
-            Resource: !Sub "arn:aws:s3:::${PublicBucketName}/*"
+            Resource: !Sub "${AuthPageBucket.Arn}/*"
 
   # IAM Role for Lambda
   ResumeAuthLambdaRole:
