@@ -283,7 +283,7 @@ Resources:
   Route53RecordSet:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneName: ching.dev.
+      HostedZoneName: chingyung.uk.
       Name: !Ref DomainName
       Type: A
       AliasTarget:
