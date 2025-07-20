@@ -215,16 +215,6 @@ Resources:
         Type: AWS
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWSRegion}:lambda:path/2015-03-31/functions/${ResumeAuthLambda.Arn}/invocations"
-
-      MethodResponses:
-        - StatusCode: 200
-          ResponseParameters:
-            method.response.header.Access-Control-Allow-Origin: true
-            method.response.header.Access-Control-Allow-Headers: true
-            method.response.header.Access-Control-Allow-Methods: true
-        - StatusCode: 400
-        - StatusCode: 401
-
         IntegrationResponses:
           - StatusCode: 200
             ResponseParameters:
