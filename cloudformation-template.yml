@@ -212,13 +212,42 @@ Resources:
       HttpMethod: POST
       AuthorizationType: NONE
       Integration:
-        Type: AWS
+        Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWSRegion}:lambda:path/2015-03-31/functions/${ResumeAuthLambda.Arn}/invocations"
-        IntegrationResponses:
+        MethodResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: true
+              method.response.header.Access-Control-Allow-Headers: true
+              method.response.header.Access-Control-Allow-Methods: true
           - StatusCode: 400
           - StatusCode: 401
+
+
+  ResumeAuthOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      ResourceId: !Ref ResumeAuthResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{ "statusCode": 200 }'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'https://chingyung.uk'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
 
   LambdaPermission:
     Type: AWS::Lambda::Permission
@@ -313,6 +342,10 @@ Resources:
         Uri: !Sub arn:aws:apigateway:${AWSRegion}:lambda:path/2015-03-31/functions/${ResumePDFLambda.Arn}/invocations
       MethodResponses:
         - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
 
   ResumePDFMethodOPTIONS:
     Type: AWS::ApiGateway::Method
@@ -334,9 +367,9 @@ Resources:
       MethodResponses:
         - StatusCode: 200
           ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
             method.response.header.Access-Control-Allow-Headers: true
             method.response.header.Access-Control-Allow-Methods: true
-            method.response.header.Access-Control-Allow-Origin: true
 
   ResumePDFPermission:
     Type: AWS::Lambda::Permission
@@ -348,7 +381,9 @@ Resources:
 
   APIDeployment:
     Type: AWS::ApiGateway::Deployment
-    DependsOn: ResumeAuthMethod
+    DependsOn:
+    - ResumeAuthMethod
+    - ResumeAuthOptionsMethod
     Properties:
       RestApiId: !Ref ResumeAuthAPI
       StageName: prod
