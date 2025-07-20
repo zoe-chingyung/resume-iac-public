@@ -131,26 +131,47 @@ Resources:
           import json
           import boto3
           import os
+          import logging
+
+
+          # Set up logging at the start of your file
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)  # or DEBUG for more detail
+
 
           def handler(event, context):
               ssm = boto3.client('ssm')
               password = ssm.get_parameter(Name=os.environ['PARAMETER_NAME'], WithDecryption=True)['Parameter']['Value']
-              
+
+              headers = {
+                  "Access-Control-Allow-Origin": "https://chingyung.uk",
+                  "Access-Control-Allow-Headers": "Content-Type",
+                  "Access-Control-Allow-Methods": "POST,OPTIONS"
+              }
+
+              # Handle preflight OPTIONS request
+              if event.get('httpMethod') == 'OPTIONS':
+                  return {
+                      "statusCode": 200,
+                      "headers": headers,
+                      "body": json.dumps({"message": "CORS preflight OK"})
+                  }
+
               try:
                   body = json.loads(event.get('body', '{}'))
                   input_password = body.get('password', '')
               except json.JSONDecodeError:
                   return {
                       "statusCode": 400,
-                      "body": json.dumps({"message": "Invalid request body"}),
-                      "headers": {"Content-Type": "application/json"}
+                      "headers": headers,
+                      "body": json.dumps({"message": "Invalid request body"})
                   }
-
+              
               if input_password != password:
                   return {
                       "statusCode": 401,
-                      "body": json.dumps({"message": "Unauthorized"}),
-                      "headers": {"Content-Type": "application/json"}
+                      "headers": headers,
+                      "body": json.dumps({"message": "Unauthorized"})
                   }
 
               s3 = boto3.client('s3')
@@ -159,11 +180,16 @@ Resources:
                   Params={'Bucket': os.environ['BUCKET_NAME'], 'Key': 'index.html'},
                   ExpiresIn=int(os.environ['EXPIRATION'])
               )
+
               return {
                   "statusCode": 200,
-                  "body": json.dumps({"url": url}),
-                  "headers": {"Content-Type": "application/json"}
+                  "headers": headers,
+                  "body": json.dumps({
+                      "message": "Auth successful",
+                      "url": url
+                  })
               }
+
 
   # API Gateway for Authentication
   ResumeAuthAPI:
@@ -303,3 +329,121 @@ Outputs:
   CloudFrontURL:
     Description: CloudFront URL for the authentication page
     Value: !Sub "https://${DomainName}"
+
+  ResumePDFLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ching-resume-pdf-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPDFExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  ResumePDFLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ching-resume-pdf-lambda
+      Handler: index.handler
+      Runtime: python3.11
+      Role: !GetAtt ResumePDFLambdaRole.Arn
+      Code:
+        ZipFile: |
+          import io
+          import base64
+          from reportlab.pdfgen import canvas
+          from reportlab.lib.pagesizes import A4
+
+          def handler(event, context):
+              headers = {
+                  "Access-Control-Allow-Origin": "https://chingyung.uk",
+                  "Access-Control-Allow-Headers": "Content-Type",
+                  "Access-Control-Allow-Methods": "GET,OPTIONS",
+                  "Content-Type": "application/pdf",
+                  "Content-Disposition": "attachment; filename=resume.pdf"
+              }
+
+              if event.get("httpMethod") == "OPTIONS":
+                  return { "statusCode": 200, "headers": headers, "body": "" }
+
+              buffer = io.BytesIO()
+              p = canvas.Canvas(buffer, pagesize=A4)
+              p.drawString(100, 800, "Ching Yung - Senior Cloud Engineer")
+              p.drawString(100, 780, "Resume PDF Exported via Lambda")
+              p.showPage()
+              p.save()
+              buffer.seek(0)
+              pdf_data = base64.b64encode(buffer.read()).decode("utf-8")
+
+              return {
+                  "statusCode": 200,
+                  "isBase64Encoded": True,
+                  "headers": headers,
+                  "body": pdf_data
+              }
+
+  ResumePDFResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      ParentId: !GetAtt ResumeAuthAPI.RootResourceId
+      PathPart: resume
+
+  ResumePDFMethodGET:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      ResourceId: !Ref ResumePDFResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWSRegion}:lambda:path/2015-03-31/functions/${ResumePDFLambda.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+
+  ResumePDFMethodOPTIONS:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      ResourceId: !Ref ResumePDFResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{ "statusCode": 200 }'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'https://chingyung.uk'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ResumePDFPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ResumePDFLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWSRegion}:${AWS::AccountId}:${ResumeAuthAPI}/*/GET/resume
