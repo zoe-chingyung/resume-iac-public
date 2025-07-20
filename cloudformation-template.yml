@@ -224,7 +224,6 @@ Resources:
           - StatusCode: 400
           - StatusCode: 401
 
-
   ResumeAuthOptionsMethod:
     Type: AWS::ApiGateway::Method
     Properties:
