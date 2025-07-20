@@ -190,7 +190,6 @@ Resources:
                   })
               }
 
-
   # API Gateway for Authentication
   ResumeAuthAPI:
     Type: AWS::ApiGateway::RestApi
@@ -228,107 +227,6 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWSRegion}:${AWS::AccountId}:${ResumeAuthAPI}/*/POST/auth"
-
-  APIDeployment:
-    Type: AWS::ApiGateway::Deployment
-    DependsOn: ResumeAuthMethod
-    Properties:
-      RestApiId: !Ref ResumeAuthAPI
-      StageName: prod
-
-  # IAM Role for GitHub Actions
-  GitHubActionsRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: ching-resume-github-actions-role
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/github-cf-deploy"
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: GitHubActionsS3Access
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:ListBucket
-                Resource:
-                  - !Sub "arn:aws:s3:::${PrivateBucketName}"
-                  - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
-                  - !Sub "arn:aws:s3:::${PublicBucketName}"
-                  - !Sub "arn:aws:s3:::${PublicBucketName}/*"
-
-  # CloudFront Distribution for Public Bucket
-  CloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Origins:
-          - DomainName: !Sub "${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
-            Id: S3Origin
-            CustomOriginConfig:
-              HTTPPort: 80
-              HTTPSPort: 443
-              OriginProtocolPolicy: http-only
-        Enabled: true
-        DefaultRootObject: index.html
-        CustomErrorResponses:
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /error.html
-        DefaultCacheBehavior:
-          TargetOriginId: S3Origin
-          ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods:
-            - GET
-            - HEAD
-          CachedMethods:
-            - GET
-            - HEAD
-          ForwardedValues:
-            QueryString: false
-            Cookies:
-              Forward: none
-          MinTTL: 0
-          DefaultTTL: 86400
-          MaxTTL: 31536000
-        PriceClass: PriceClass_100
-        ViewerCertificate:
-          AcmCertificateArn: arn:aws:acm:us-east-1:105051201569:certificate/11fa35ca-5f01-43ad-9558-7f3ae38d603b
-          SslSupportMethod: sni-only
-        Aliases:
-          - !Ref DomainName
-
-  # Route 53 Record for Custom Domain
-  Route53RecordSet:
-    Type: AWS::Route53::RecordSet
-    Properties:
-      HostedZoneName: chingyung.uk.
-      Name: !Ref DomainName
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt CloudFrontDistribution.DomainName
-        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront hosted zone ID
-
-Outputs:
-  PrivateBucketName:
-    Description: Name of the private S3 bucket
-    Value: !Ref PrivateBucketName
-  PublicBucketWebsiteURL:
-    Description: Website URL for the public authentication page
-    Value: !Sub "http://${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
-  APIEndpoint:
-    Description: API Gateway endpoint for authentication
-    Value: !Sub "https://${ResumeAuthAPI}.execute-api.${AWSRegion}.amazonaws.com/prod/auth"
-  CloudFrontURL:
-    Description: CloudFront URL for the authentication page
-    Value: !Sub "https://${DomainName}"
 
   ResumePDFLambdaRole:
     Type: AWS::IAM::Role
@@ -447,3 +345,104 @@ Outputs:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub arn:aws:execute-api:${AWSRegion}:${AWS::AccountId}:${ResumeAuthAPI}/*/GET/resume
+
+  APIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ResumeAuthMethod
+    Properties:
+      RestApiId: !Ref ResumeAuthAPI
+      StageName: prod
+
+  # IAM Role for GitHub Actions
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ching-resume-github-actions-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/github-cf-deploy"
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: GitHubActionsS3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}"
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
+                  - !Sub "arn:aws:s3:::${PublicBucketName}"
+                  - !Sub "arn:aws:s3:::${PublicBucketName}/*"
+
+  # CloudFront Distribution for Public Bucket
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Sub "${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
+            Id: S3Origin
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        DefaultRootObject: index.html
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /error.html
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 86400
+          MaxTTL: 31536000
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: arn:aws:acm:us-east-1:105051201569:certificate/11fa35ca-5f01-43ad-9558-7f3ae38d603b
+          SslSupportMethod: sni-only
+        Aliases:
+          - !Ref DomainName
+
+  # Route 53 Record for Custom Domain
+  Route53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: chingyung.uk.
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2 # CloudFront hosted zone ID
+
+Outputs:
+  PrivateBucketName:
+    Description: Name of the private S3 bucket
+    Value: !Ref PrivateBucketName
+  PublicBucketWebsiteURL:
+    Description: Website URL for the public authentication page
+    Value: !Sub "http://${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
+  APIEndpoint:
+    Description: API Gateway endpoint for authentication
+    Value: !Sub "https://${ResumeAuthAPI}.execute-api.${AWSRegion}.amazonaws.com/prod/auth"
+  CloudFrontURL:
+    Description: CloudFront URL for the authentication page
+    Value: !Sub "https://${DomainName}"
