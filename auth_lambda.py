@@ -2,6 +2,7 @@ import json
 import boto3
 import os
 import logging
+import requests
 from botocore.exceptions import ClientError
 
 # Set up logging
@@ -53,15 +54,27 @@ def handler(event, context):
         }
 
     try:
-        # Parse request body
         body = json.loads(event.get('body', '{}'))
         input_password = body.get('password', '')
-        logger.info(f"Received password length: {len(input_password)}")
-        
-        # Get correct password (with caching)
+
+        # Extract IP and user agent
+        ip = event.get('requestContext', {}).get('identity', {}).get('sourceIp', 'unknown')
+        user_agent = event.get('requestContext', {}).get('identity', {}).get('userAgent', 'unknown')
+
+        # Call GeoIP API
+        try:
+            geo_resp = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
+            geo_data = geo_resp.json() if geo_resp.status_code == 200 else {}
+            location = f"{geo_data.get('country', 'unknown')} - {geo_data.get('regionName', '')} - {geo_data.get('city', '')}"
+        except Exception as e:
+            logger.warning(f"GeoIP lookup failed for IP {ip}: {str(e)}")
+            location = "GeoIP lookup failed"
+
+        # Log user info
+        logger.info(f"[REQUEST INFO] IP: {ip} | Location: {location} | User-Agent: {user_agent} | Input password: {input_password[:3]}***")
+
         correct_password = get_password()
         
-        # Check password
         if input_password != correct_password:
             logger.info("Password mismatch")
             return {
@@ -72,7 +85,6 @@ def handler(event, context):
         
         logger.info("Password correct, generating presigned URL")
         
-        # Generate presigned URL
         s3 = boto3.client('s3')
         url = s3.generate_presigned_url(
             'get_object',
