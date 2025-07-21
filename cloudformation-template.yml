@@ -196,6 +196,8 @@ Resources:
     Properties:
       Name: ching-resume-auth-api
       Description: API for resume access authentication
+      BinaryMediaTypes:
+        - application/pdf
 
   ResumeAuthResource:
     Type: AWS::ApiGateway::Resource
