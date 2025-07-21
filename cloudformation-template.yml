@@ -66,6 +66,7 @@ Resources:
       Tags:
         - Key: Project
           Value: ResumeWebsite
+
   AuthPageBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
@@ -90,6 +91,8 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
         - PolicyName: LambdaAccessPolicy
           PolicyDocument:
@@ -104,12 +107,6 @@ Resources:
                   - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
-              - Effect: Allow
-                Action:
                   - ssm:GetParameter
                 Resource: !Sub "arn:aws:ssm:${AWSRegion}:${AWS::AccountId}:parameter/resume/auth/password"
 
@@ -119,7 +116,7 @@ Resources:
     Properties:
       FunctionName: ching-resume-auth-lambda
       Runtime: python3.11
-      Handler: index.handler
+      Handler: auth_lambda.handler
       Role: !GetAtt ResumeAuthLambdaRole.Arn
       Environment:
         Variables:
@@ -128,67 +125,65 @@ Resources:
           EXPIRATION: !Ref PreSignedURLExpiration
       Code:
         ZipFile: |
-          import json
-          import boto3
-          import os
-          import logging
-
-
-          # Set up logging at the start of your file
-          logger = logging.getLogger()
-          logger.setLevel(logging.INFO)  # or DEBUG for more detail
-
-
+          # This is a placeholder - the actual code will be deployed via GitHub Actions
           def handler(event, context):
-              ssm = boto3.client('ssm')
-              password = ssm.get_parameter(Name=os.environ['PARAMETER_NAME'], WithDecryption=True)['Parameter']['Value']
-
-              headers = {
-                  "Access-Control-Allow-Origin": "https://chingyung.uk",
-                  "Access-Control-Allow-Headers": "Content-Type",
-                  "Access-Control-Allow-Methods": "POST,OPTIONS"
-              }
-
-              # Handle preflight OPTIONS request
-              if event.get('httpMethod') == 'OPTIONS':
-                  return {
-                      "statusCode": 200,
-                      "headers": headers,
-                      "body": json.dumps({"message": "CORS preflight OK"})
-                  }
-
-              try:
-                  body = json.loads(event.get('body', '{}'))
-                  input_password = body.get('password', '')
-              except json.JSONDecodeError:
-                  return {
-                      "statusCode": 400,
-                      "headers": headers,
-                      "body": json.dumps({"message": "Invalid request body"})
-                  }
-              
-              if input_password != password:
-                  return {
-                      "statusCode": 401,
-                      "headers": headers,
-                      "body": json.dumps({"message": "Unauthorized"})
-                  }
-
-              s3 = boto3.client('s3')
-              url = s3.generate_presigned_url(
-                  'get_object',
-                  Params={'Bucket': os.environ['BUCKET_NAME'], 'Key': 'index.html'},
-                  ExpiresIn=int(os.environ['EXPIRATION'])
-              )
-
               return {
-                  "statusCode": 200,
-                  "headers": headers,
-                  "body": json.dumps({
-                      "message": "Auth successful",
-                      "url": url
-                  })
+                  'statusCode': 503,
+                  'body': 'Function not yet deployed'
               }
+      Tags:
+        - Key: Project
+          Value: ResumeWebsite
+
+  # Lambda Function for PDF Serving
+  ResumePDFLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ching-resume-pdf-lambda
+      Handler: pdf_lambda.handler
+      Runtime: python3.11
+      Role: !GetAtt ResumePDFLambdaRole.Arn
+      Environment:
+        Variables:
+          RESUME_BUCKET: !Ref PrivateBucketName
+          RESUME_KEY: resume.pdf
+      Code:
+        ZipFile: |
+          # This is a placeholder - the actual code will be deployed via GitHub Actions
+          def handler(event, context):
+              return {
+                  'statusCode': 503,
+                  'body': 'Function not yet deployed'
+              }
+      Tags:
+        - Key: Project
+          Value: ResumeWebsite
+
+  ResumePDFLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ching-resume-pdf-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaPDFExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}"
+                  - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
 
   # API Gateway for Authentication
   ResumeAuthAPI:
@@ -256,71 +251,6 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWSRegion}:${AWS::AccountId}:${ResumeAuthAPI}/*/POST/auth"
 
-  ResumePDFLambdaRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: ching-resume-pdf-lambda-role
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: LambdaPDFExecution
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
-
-  ResumePDFLambda:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ching-resume-pdf-lambda
-      Handler: index.handler
-      Runtime: python3.11
-      Role: !GetAtt ResumePDFLambdaRole.Arn
-      Code:
-        ZipFile: |
-          import io
-          import base64
-          from reportlab.pdfgen import canvas
-          from reportlab.lib.pagesizes import A4
-
-          def handler(event, context):
-              headers = {
-                  "Access-Control-Allow-Origin": "https://chingyung.uk",
-                  "Access-Control-Allow-Headers": "Content-Type",
-                  "Access-Control-Allow-Methods": "GET,OPTIONS",
-                  "Content-Type": "application/pdf",
-                  "Content-Disposition": "attachment; filename=resume.pdf"
-              }
-
-              if event.get("httpMethod") == "OPTIONS":
-                  return { "statusCode": 200, "headers": headers, "body": "" }
-
-              buffer = io.BytesIO()
-              p = canvas.Canvas(buffer, pagesize=A4)
-              p.drawString(100, 800, "Ching Yung - Senior Cloud Engineer")
-              p.drawString(100, 780, "Resume PDF Exported via Lambda")
-              p.showPage()
-              p.save()
-              buffer.seek(0)
-              pdf_data = base64.b64encode(buffer.read()).decode("utf-8")
-
-              return {
-                  "statusCode": 200,
-                  "isBase64Encoded": True,
-                  "headers": headers,
-                  "body": pdf_data
-              }
-
   ResumePDFResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -383,6 +313,8 @@ Resources:
     DependsOn:
     - ResumeAuthMethod
     - ResumeAuthOptionsMethod
+    - ResumePDFMethodGET
+    - ResumePDFMethodOPTIONS
     Properties:
       RestApiId: !Ref ResumeAuthAPI
       StageName: prod
@@ -400,7 +332,7 @@ Resources:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/github-cf-deploy"
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: GitHubActionsS3Access
+        - PolicyName: GitHubActionsAccessPolicy
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -414,6 +346,13 @@ Resources:
                   - !Sub "arn:aws:s3:::${PrivateBucketName}/*"
                   - !Sub "arn:aws:s3:::${PublicBucketName}"
                   - !Sub "arn:aws:s3:::${PublicBucketName}/*"
+              - Effect: Allow
+                Action:
+                  - lambda:UpdateFunctionCode
+                  - lambda:GetFunction
+                Resource:
+                  - !GetAtt ResumeAuthLambda.Arn
+                  - !GetAtt ResumePDFLambda.Arn
 
   # CloudFront Distribution for Public Bucket
   CloudFrontDistribution:
@@ -471,12 +410,31 @@ Outputs:
   PrivateBucketName:
     Description: Name of the private S3 bucket
     Value: !Ref PrivateBucketName
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateBucketName"
+  PublicBucketName:
+    Description: Name of the public S3 bucket
+    Value: !Ref PublicBucketName
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicBucketName"
   PublicBucketWebsiteURL:
     Description: Website URL for the public authentication page
     Value: !Sub "http://${PublicBucketName}.s3-website.${AWSRegion}.amazonaws.com"
   APIEndpoint:
     Description: API Gateway endpoint for authentication
     Value: !Sub "https://${ResumeAuthAPI}.execute-api.${AWSRegion}.amazonaws.com/prod/auth"
+    Export:
+      Name: !Sub "${AWS::StackName}-APIEndpoint"
   CloudFrontURL:
     Description: CloudFront URL for the authentication page
     Value: !Sub "https://${DomainName}"
+  AuthLambdaFunctionName:
+    Description: Name of the authentication Lambda function
+    Value: !Ref ResumeAuthLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-AuthLambdaFunctionName"
+  PDFLambdaFunctionName:
+    Description: Name of the PDF serving Lambda function
+    Value: !Ref ResumePDFLambda
+    Export:
+      Name: !Sub "${AWS::StackName}-PDFLambdaFunctionName"

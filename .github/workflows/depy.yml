@@ -1,8 +1,14 @@
-name: Deploy CloudFormation Stack
+name: Deploy CloudFormation Stack and Lambda Functions
 
 on:
   push:
-    branches: [main]  # Or your default branch
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: eu-west-2
+  STACK_NAME: resume-stack
 
 jobs:
   deploy:
@@ -10,20 +16,95 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-2
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
             --template-file cloudformation-template.yml \
-            --stack-name resume-stack \
+            --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides PrivateBucketName=ching-resume-html PublicBucketName=ching-resume-auth-page PreSignedURLExpiration=3600 DomainName=chingyung.uk
+            --parameter-overrides \
+              PrivateBucketName=ching-resume-html \
+              PublicBucketName=ching-resume-auth-page \
+              PreSignedURLExpiration=3600 \
+              DomainName=chingyung.uk \
+              AWSRegion=${{ env.AWS_REGION }} \
+            --no-fail-on-empty-changeset
 
+      - name: Get Lambda function names from CloudFormation outputs
+        id: get-lambda-names
+        run: |
+          AUTH_LAMBDA_NAME=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='AuthLambdaFunctionName'].OutputValue" \
+            --output text)
+          
+          PDF_LAMBDA_NAME=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='PDFLambdaFunctionName'].OutputValue" \
+            --output text)
+          
+          echo "AUTH_LAMBDA_NAME=$AUTH_LAMBDA_NAME" >> $GITHUB_OUTPUT
+          echo "PDF_LAMBDA_NAME=$PDF_LAMBDA_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create Lambda deployment packages
+        run: |
+          # Create auth lambda package
+          mkdir -p lambda-packages/auth
+          cp auth_lambda.py lambda-packages/auth/
+          cd lambda-packages/auth
+          zip -r ../auth-lambda.zip .
+          cd ../..
+          
+          # Create PDF lambda package
+          mkdir -p lambda-packages/pdf
+          cp pdf_lambda.py lambda-packages/pdf/
+          cd lambda-packages/pdf
+          zip -r ../pdf-lambda.zip .
+          cd ../..
+
+      - name: Update Authentication Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.get-lambda-names.outputs.AUTH_LAMBDA_NAME }} \
+            --zip-file fileb://lambda-packages/auth-lambda.zip
+
+      - name: Update PDF Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ steps.get-lambda-names.outputs.PDF_LAMBDA_NAME }} \
+            --zip-file fileb://lambda-packages/pdf-lambda.zip
+
+      - name: Wait for Lambda functions to be updated
+        run: |
+          echo "Waiting for Lambda functions to be updated..."
+          aws lambda wait function-updated \
+            --function-name ${{ steps.get-lambda-names.outputs.AUTH_LAMBDA_NAME }}
+          
+          aws lambda wait function-updated \
+            --function-name ${{ steps.get-lambda-names.outputs.PDF_LAMBDA_NAME }}
+          
+          echo "Lambda functions updated successfully!"
+
+      - name: Display deployment information
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo ""
+          echo "📊 Stack Information:"
+          aws cloudformation describe-stacks \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query "Stacks[0].Outputs[*].[OutputKey,OutputValue]" \
+            --output table
+          
+          echo ""
+          echo "🔧 Lambda Functions Updated:"
+          echo "  - Auth Lambda: ${{ steps.get-lambda-names.outputs.AUTH_LAMBDA_NAME }}"
+          echo "  - PDF Lambda: ${{ steps.get-lambda-names.outputs.PDF_LAMBDA_NAME }}"
