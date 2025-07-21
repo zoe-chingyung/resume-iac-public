@@ -60,6 +60,7 @@ jobs:
           # Create auth lambda package
           mkdir -p lambda-packages/auth
           cp auth_lambda.py lambda-packages/auth/
+          pip install requests -t lambda-packages/auth/
           cd lambda-packages/auth
           zip -r ../auth-lambda.zip .
           cd ../..
